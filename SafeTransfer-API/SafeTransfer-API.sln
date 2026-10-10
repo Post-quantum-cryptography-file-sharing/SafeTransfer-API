@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 25.0.1706.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeTransfer-API", "SafeTransfer-API\SafeTransfer-API.csproj", "{03084A42-CD17-4D5F-A0C6-72A6C14C8D02}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{03084A42-CD17-4D5F-A0C6-72A6C14C8D02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03084A42-CD17-4D5F-A0C6-72A6C14C8D02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03084A42-CD17-4D5F-A0C6-72A6C14C8D02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03084A42-CD17-4D5F-A0C6-72A6C14C8D02}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3DAF6A5E-C553-414B-81C0-C2EA403CDF6C}
+	EndGlobalSection
+EndGlobal
