@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="../build/SafeTransfer-API.props" />
-</Project>
