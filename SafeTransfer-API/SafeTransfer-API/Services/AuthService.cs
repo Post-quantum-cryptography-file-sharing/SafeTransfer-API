@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Identity;
 using SafeTransfer_API.Dtos;
 using SafeTransfer_API.Interfaces;
@@ -9,11 +10,42 @@ public class AuthService : IAuthService
 {
     private readonly UserManager<AppUser> _userManager;
     private readonly SignInManager<AppUser> _signInManager;
+    private readonly ILogger<AuthService> _logger;
+    private readonly IWebHostEnvironment _env;
 
-    public AuthService(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager)
+    public AuthService(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager,  ILogger<AuthService> logger,  IWebHostEnvironment env)
     {
         _userManager = userManager;
         _signInManager = signInManager;
+        _logger = logger;
+        _env = env;
+    }
+
+    public async Task<ServiceResult<AppUser>> CreateTemporaryAccountAsync(string email)
+    {
+        var user = new AppUser
+        {
+            UserName = email,
+            Email = email,
+            DisplayName = email.Split('@')[0],
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var password = GenerateTemporaryPassword();
+        var result = await _userManager.CreateAsync(user, password);
+        if (!result.Succeeded)
+            return ServiceResult<AppUser>.Invalid(string.Join(" ", result.Errors.Select(e => e.Description)));
+        
+        if (_env.IsDevelopment())
+            _logger.LogInformation("Temporary account {Email} created with password {Password}", email, password);
+
+        return ServiceResult<AppUser>.Ok(user);
+    }
+
+    private static string GenerateTemporaryPassword()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+        return RandomNumberGenerator.GetString(chars, 16) + "-a1A";
     }
 
     public async Task<IdentityResult> RegisterAsync(RegisterRequest request)
