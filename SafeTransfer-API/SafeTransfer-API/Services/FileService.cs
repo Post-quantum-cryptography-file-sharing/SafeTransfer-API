@@ -43,7 +43,7 @@ public class FileService : IFileService
         var batch = new UploadBatch
         {
             OwnerId = ownerId,
-            Title = string.IsNullOrWhiteSpace(request.Title) ? null : request.Title,
+            Title = request.Title,
             CreatedAt = now,
             ExpiresAt = expiresAt
         };
