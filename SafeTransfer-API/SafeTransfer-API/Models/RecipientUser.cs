@@ -1,6 +1,6 @@
 namespace SafeTransfer_API.Models;
 
-public class TargetUser
+public class RecipientUser
 {
     public Guid Id { get; set; }
     public Guid BatchId { get; set; }

@@ -10,5 +10,5 @@ public class UploadBatch
     public DateTime ExpiresAt { get; set; }
 
     public List<StoredFile> Files { get; set; } = [];
-    public List<TargetUser> TargetUsers { get; set; } = [];
+    public List<RecipientUser> RecipientUsers { get; set; } = [];
 }

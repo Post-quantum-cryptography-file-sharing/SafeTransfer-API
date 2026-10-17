@@ -70,7 +70,7 @@ public class FileService : IFileService
             }
 
             foreach (var userid in recipients.Value!)
-                batch.TargetUsers.Add(new TargetUser { UserId = userid, AddedAt = now });
+                batch.RecipientUsers.Add(new RecipientUser { UserId = userid, AddedAt = now });
 
             _db.UploadBatches.Add(batch);
             await _db.SaveChangesAsync(ct);
@@ -92,7 +92,7 @@ public class FileService : IFileService
         var batches = await _db.UploadBatches
             .AsNoTracking()
             .Include(b => b.Files)
-            .Include(b => b.TargetUsers).ThenInclude(t => t.User)
+            .Include(b => b.RecipientUsers).ThenInclude(t => t.User)
             .Where(b => b.OwnerId == userId && b.ExpiresAt > now)
             .OrderByDescending(b => b.CreatedAt)
             .ToListAsync();
@@ -105,7 +105,7 @@ public class FileService : IFileService
         var now = DateTime.UtcNow;
         return await _db.UploadBatches
             .AsNoTracking()
-            .Where(b => b.ExpiresAt > now && b.TargetUsers.Any(t => t.UserId == userId))
+            .Where(b => b.ExpiresAt > now && b.RecipientUsers.Any(t => t.UserId == userId))
             .OrderByDescending(b => b.CreatedAt)
             .Select(b => new SharedBatchResponse(
                 b.Id, b.Title, b.Owner.DisplayName, b.Owner.Email!, b.ExpiresAt,
@@ -118,7 +118,7 @@ public class FileService : IFileService
         var batch = await _db.UploadBatches
             .AsNoTracking()
             .Include(b => b.Files)
-            .Include(b => b.TargetUsers).ThenInclude(t => t.User)
+            .Include(b => b.RecipientUsers).ThenInclude(t => t.User)
             .AsSplitQuery()
             .FirstOrDefaultAsync(b => b.Id == batchId);
 
@@ -137,7 +137,7 @@ public class FileService : IFileService
 
         var resolved = await ResolveRecipientsAsync(userId, request.UserIds, request.Emails);
 
-        var existing = batch!.TargetUsers.Select(t => t.UserId).ToHashSet();
+        var existing = batch!.RecipientUsers.Select(t => t.UserId).ToHashSet();
         var toAdd = resolved.Value!.Where(id => !existing.Contains(id)).ToList();
         
         if (existing.Count + toAdd.Count > MaxRecipients)
@@ -160,10 +160,10 @@ public class FileService : IFileService
             return ServiceResult<BatchResponse>.Invalid(resolved.Error!);
 
         var wanted = resolved.Value!.ToHashSet();
-        var toRemove = batch!.TargetUsers.Where(t => !wanted.Contains(t.UserId)).ToList();
+        var toRemove = batch!.RecipientUsers.Where(t => !wanted.Contains(t.UserId)).ToList();
         
-        _db.TargetUsers.RemoveRange(toRemove);
-        var existing = batch.TargetUsers.Select(t => t.UserId).ToHashSet();
+        _db.RecipientUsers.RemoveRange(toRemove);
+        var existing = batch.RecipientUsers.Select(t => t.UserId).ToHashSet();
         AddTargets(batch.Id, wanted.Where(id => !existing.Contains(id)));
 
         await _db.SaveChangesAsync();
@@ -176,10 +176,10 @@ public class FileService : IFileService
         var (batch, status) = await LoadOwnedBatchAsync(batchId, userId);
         if (batch is null) return new ServiceResult<BatchResponse>(status);
 
-        var target = batch.TargetUsers.FirstOrDefault(t => t.Id == targetId);
+        var target = batch.RecipientUsers.FirstOrDefault(t => t.Id == targetId);
         if (target is null) return ServiceResult<BatchResponse>.NotFound();
 
-        _db.TargetUsers.Remove(target);
+        _db.RecipientUsers.Remove(target);
         await _db.SaveChangesAsync();
         return await GetBatchAsync(batchId, userId);
     }
@@ -187,13 +187,13 @@ public class FileService : IFileService
     public async Task<ServiceResult<FileDownload>> OpenDownloadAsync(Guid fileId, string userId, CancellationToken ct)
     {
         var file = await _db.StoredFiles
-            .Include(f => f.Batch).ThenInclude(b => b.TargetUsers)
+            .Include(f => f.Batch).ThenInclude(b => b.RecipientUsers)
             .FirstOrDefaultAsync(f => f.Id == fileId, ct);
 
         if (file is null || file.ExpiresAt <= DateTime.UtcNow)
             return ServiceResult<FileDownload>.NotFound();
 
-        var target = file.Batch.TargetUsers.FirstOrDefault(t => t.UserId == userId);
+        var target = file.Batch.RecipientUsers.FirstOrDefault(t => t.UserId == userId);
         if (file.OwnerId != userId && target is null)
             return ServiceResult<FileDownload>.Forbidden();
 
@@ -250,14 +250,14 @@ public class FileService : IFileService
         var now = DateTime.UtcNow;
         foreach (var userId in userIds)
         {
-            _db.TargetUsers.Add(new TargetUser {BatchId = batchId, UserId = userId, AddedAt = now});
+            _db.RecipientUsers.Add(new RecipientUser {BatchId = batchId, UserId = userId, AddedAt = now});
         }
     }
 
     private async Task<(UploadBatch? batch, ServiceStatus Status)> LoadOwnedBatchAsync(Guid batchId, string userId)
     {
         var batch = _db.UploadBatches
-            .Include(b => b.TargetUsers)
+            .Include(b => b.RecipientUsers)
             .FirstOrDefault(b => b.Id == batchId);
 
         if (batch is null || batch.ExpiresAt <= DateTime.UtcNow)
@@ -283,8 +283,8 @@ public class FileService : IFileService
     private static BatchResponse ToResponse(UploadBatch b) => new(
         b.Id, b.Title, b.CreatedAt, b.ExpiresAt,
         b.Files.Select(ToFileResponse).ToList(),
-        b.TargetUsers
+        b.RecipientUsers
             .OrderBy(t => t.AddedAt)
-            .Select(t => new TargetResponse(t.Id, t.UserId, t.User.Email!, t.User.DisplayName, t.DownloadedAt))
+            .Select(t => new RecipientResponse(t.Id, t.UserId, t.User.Email!, t.User.DisplayName, t.DownloadedAt))
             .ToList());
 }
