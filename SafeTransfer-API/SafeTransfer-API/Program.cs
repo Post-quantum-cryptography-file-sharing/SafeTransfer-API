@@ -53,6 +53,14 @@ builder.Services.AddSingleton<ILocalFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddHostedService<ExpiredFileCleanupService>();
 
+builder.Services.AddHttpClient<IEmailService, BrevoEmailService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.brevo.com/");
+    client.DefaultRequestHeaders.Add("api-key",
+        builder.Configuration["Brevo:ApiKey"] ?? throw new InvalidOperationException("Brevo:ApiKey is not set."));
+    client.DefaultRequestHeaders.Add("accept", "application/json");
+});
+
 var frontendOrigins = builder.Configuration.GetSection("Cors:FrontendOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
 {

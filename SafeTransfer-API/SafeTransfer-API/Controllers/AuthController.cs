@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SafeTransfer_API.Data;
 using SafeTransfer_API.Dtos;
 using SafeTransfer_API.Interfaces;
 using SafeTransfer_API.Models;
@@ -73,5 +75,16 @@ public class AuthController : ControllerBase
         if(user is null) return Unauthorized();
 
         return Ok(new UserResponse(user.Id, user.Email!, user.DisplayName!));
+    }
+
+    [Authorize]
+    [HttpDelete("me")]
+    public async Task<IActionResult> DeleteAccount()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+        
+        await _authService.DeleteAccountAsync(user);
+        return NoContent();
     }
 }

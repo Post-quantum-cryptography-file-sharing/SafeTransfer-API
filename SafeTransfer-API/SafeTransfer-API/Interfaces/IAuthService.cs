@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using SafeTransfer_API.Dtos;
+using SafeTransfer_API.DTOs;
 using SafeTransfer_API.Models;
 using SafeTransfer_API.Services;
 
@@ -11,5 +12,6 @@ public interface IAuthService
     Task<SignInResult> LogInAsync(LoginRequest request);
     Task LogoutAsync();
     Task<IdentityResult> ChangePasswordAsync(AppUser user, ChangePasswordRequest request);
-    Task<ServiceResult<AppUser>> CreateTemporaryAccountAsync(string email);
+    Task<ServiceResult<TemporaryAccount>> CreateTemporaryAccountAsync(string email);
+    Task DeleteAccountAsync(AppUser user);
 }
