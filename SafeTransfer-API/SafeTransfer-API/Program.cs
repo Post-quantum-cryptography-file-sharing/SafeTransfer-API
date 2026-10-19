@@ -51,6 +51,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddSingleton<ILocalFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<IFileService, FileService>();
+builder.Services.AddHostedService<ExpiredFileCleanupService>();
 
 var frontendOrigins = builder.Configuration.GetSection("Cors:FrontendOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>

@@ -227,6 +227,35 @@ namespace SafeTransfer_API.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("SafeTransfer_API.Models.RecipientUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DownloadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("BatchId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("RecipientUsers");
+                });
+
             modelBuilder.Entity("SafeTransfer_API.Models.StoredFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -265,38 +294,11 @@ namespace SafeTransfer_API.Migrations
 
                     b.HasIndex("BatchId");
 
+                    b.HasIndex("ExpiresAt");
+
                     b.HasIndex("OwnerId");
 
                     b.ToTable("StoredFiles");
-                });
-
-            modelBuilder.Entity("SafeTransfer_API.Models.TargetUser", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("AddedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("BatchId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("DownloadedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("BatchId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("TargetUsers");
                 });
 
             modelBuilder.Entity("SafeTransfer_API.Models.UploadBatch", b =>
@@ -316,6 +318,7 @@ namespace SafeTransfer_API.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Title")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
@@ -376,6 +379,25 @@ namespace SafeTransfer_API.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SafeTransfer_API.Models.RecipientUser", b =>
+                {
+                    b.HasOne("SafeTransfer_API.Models.UploadBatch", "Batch")
+                        .WithMany("RecipientUsers")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SafeTransfer_API.Models.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Batch");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("SafeTransfer_API.Models.StoredFile", b =>
                 {
                     b.HasOne("SafeTransfer_API.Models.UploadBatch", "Batch")
@@ -395,25 +417,6 @@ namespace SafeTransfer_API.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("SafeTransfer_API.Models.TargetUser", b =>
-                {
-                    b.HasOne("SafeTransfer_API.Models.UploadBatch", "Batch")
-                        .WithMany("TargetUsers")
-                        .HasForeignKey("BatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("SafeTransfer_API.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Batch");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("SafeTransfer_API.Models.UploadBatch", b =>
                 {
                     b.HasOne("SafeTransfer_API.Models.AppUser", "Owner")
@@ -429,7 +432,7 @@ namespace SafeTransfer_API.Migrations
                 {
                     b.Navigation("Files");
 
-                    b.Navigation("TargetUsers");
+                    b.Navigation("RecipientUsers");
                 });
 #pragma warning restore 612, 618
         }

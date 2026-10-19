@@ -22,6 +22,7 @@ public class AppDbContext(DbContextOptions options) : IdentityDbContext<AppUser>
         {
             f.HasOne(x => x.Batch).WithMany(b => b.Files).HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Cascade);
             f.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.NoAction);
+            f.HasIndex(x => x.ExpiresAt);
         });
 
         builder.Entity<RecipientUser>(t =>
