@@ -12,16 +12,28 @@ public class FileService : IFileService
     private const int MaxFilesPerUpload = 20;
     private const int MaxRecipients = 30;
     private const int MaxExpiryDays = 30;
-    
+
     private readonly AppDbContext _db;
     private readonly ILocalFileStorage _storage;
     private readonly IAuthService _authService;
+    private readonly IEmailService _email;
+    private readonly IConfiguration _config;
+    private readonly ILogger<FileService> _logger;
 
-    public FileService(AppDbContext db, ILocalFileStorage storage, IAuthService authService)
+    public FileService(
+        AppDbContext db,
+        ILocalFileStorage storage,
+        IAuthService authService,
+        IEmailService email,
+        IConfiguration config,
+        ILogger<FileService> logger)
     {
         _db = db;
         _storage = storage;
         _authService = authService;
+        _email = email;
+        _config = config;
+        _logger = logger;
     }
 
     public async Task<ServiceResult<BatchResponse>> UploadAsync(string ownerId, UploadRequest request, CancellationToken ct)
@@ -37,8 +49,9 @@ public class FileService : IFileService
             return ServiceResult<BatchResponse>.Invalid($"Too many files (max {MaxFilesPerUpload}).");
 
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
-        
-        var recipients = await ResolveRecipientsAsync(ownerId, request.RecipientIds, request.RecipientEmails);
+
+        var createdAccounts = new List<TemporaryAccount>();
+        var recipients = await ResolveRecipientsAsync(ownerId, request.RecipientIds, request.RecipientEmails, createdAccounts);
 
         var batch = new UploadBatch
         {
@@ -83,9 +96,10 @@ public class FileService : IFileService
             throw;
         }
 
+        await SendTemporaryAccountEmailsAsync(ownerId, createdAccounts);
         return await GetBatchAsync(batch.Id, ownerId);
     }
-    
+
     public async Task<List<BatchResponse>> GetMyBatchesAsync(string userId)
     {
         var now = DateTime.UtcNow;
@@ -132,42 +146,48 @@ public class FileService : IFileService
         RecipientRequest request)
     {
         var (batch, _) = await LoadOwnedBatchAsync(batchId, userId);
-        
+
         await using var transaction = await _db.Database.BeginTransactionAsync();
 
-        var resolved = await ResolveRecipientsAsync(userId, request.UserIds, request.Emails);
+        var createdAccounts = new List<TemporaryAccount>();
+        var resolved = await ResolveRecipientsAsync(userId, request.UserIds, request.Emails, createdAccounts);
 
         var existing = batch!.RecipientUsers.Select(t => t.UserId).ToHashSet();
         var toAdd = resolved.Value!.Where(id => !existing.Contains(id)).ToList();
-        
+
         if (existing.Count + toAdd.Count > MaxRecipients)
             return ServiceResult<BatchResponse>.Invalid($"Too many files (max {MaxFilesPerUpload}).");
 
         AddTargets(batch.Id, toAdd);
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
+
+        await SendTemporaryAccountEmailsAsync(userId, createdAccounts);
         return await GetBatchAsync(batchId, userId);
     }
-    
+
     public async Task<ServiceResult<BatchResponse>> ReplaceRecipientsAsync(Guid batchId, string userId, RecipientRequest request)
     {
         var (batch, _) = await LoadOwnedBatchAsync(batchId, userId);
 
         await using var transaction = await _db.Database.BeginTransactionAsync();
 
-        var resolved = await ResolveRecipientsAsync(userId, request.UserIds, request.Emails);
+        var createdAccounts = new List<TemporaryAccount>();
+        var resolved = await ResolveRecipientsAsync(userId, request.UserIds, request.Emails, createdAccounts);
         if (resolved.Status != ServiceStatus.Ok)
             return ServiceResult<BatchResponse>.Invalid(resolved.Error!);
 
         var wanted = resolved.Value!.ToHashSet();
         var toRemove = batch!.RecipientUsers.Where(t => !wanted.Contains(t.UserId)).ToList();
-        
+
         _db.RecipientUsers.RemoveRange(toRemove);
         var existing = batch.RecipientUsers.Select(t => t.UserId).ToHashSet();
         AddTargets(batch.Id, wanted.Where(id => !existing.Contains(id)));
 
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
+
+        await SendTemporaryAccountEmailsAsync(userId, createdAccounts);
         return await GetBatchAsync(batchId, userId);
     }
 
@@ -183,7 +203,7 @@ public class FileService : IFileService
         await _db.SaveChangesAsync();
         return await GetBatchAsync(batchId, userId);
     }
-    
+
     public async Task<ServiceResult<FileDownload>> OpenDownloadAsync(Guid fileId, string userId, CancellationToken ct)
     {
         var file = await _db.StoredFiles
@@ -207,8 +227,11 @@ public class FileService : IFileService
         return ServiceResult<FileDownload>.Ok(new FileDownload(content, file.ContentType, file.OriginalFileName));
     }
 
-    private async Task<ServiceResult<List<string>>> ResolveRecipientsAsync(string ownerId, IEnumerable<string>? userIds,
-        IEnumerable<string>? emails)
+    private async Task<ServiceResult<List<string>>> ResolveRecipientsAsync(
+        string ownerId,
+        IEnumerable<string>? userIds,
+        IEnumerable<string>? emails,
+        List<TemporaryAccount> createdAccounts)
     {
         var ids = (userIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
         var cleanEmails = (emails ?? [])
@@ -239,10 +262,37 @@ public class FileService : IFileService
         foreach (var email in newEmails)
         {
             var created = await _authService.CreateTemporaryAccountAsync(email);
-            result.Add(created.Value!.Id);
+            if (created.Status != ServiceStatus.Ok)
+                return ServiceResult<List<string>>.Invalid(created.Error!);
+            result.Add(created.Value!.User.Id);
+            createdAccounts.Add(created.Value);
         }
 
         return ServiceResult<List<string>>.Ok(result.ToList());
+    }
+
+    // Called only after CommitAsync, so nobody gets a password for a rolled-back account.
+    // A failed email is logged, not thrown: the batch is already saved.
+    private async Task SendTemporaryAccountEmailsAsync(string ownerId, List<TemporaryAccount> accounts)
+    {
+        if (accounts.Count == 0) return;
+
+        var ownerName = await _db.Users.Where(u => u.Id == ownerId).Select(u => u.DisplayName).FirstAsync();
+        var appUrl = _config["App:PublicUrl"] ?? "http://localhost:5173";
+
+        foreach (var account in accounts)
+        {
+            var email = account.User.Email!;
+            var (subject, html) = EmailTemplates.TemporaryAccount(ownerName, email, account.Password, appUrl);
+            try
+            {
+                await _email.SendAsync(email, account.User.DisplayName, subject, html, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Couldn't email the temporary password to {Email}", email);
+            }
+        }
     }
 
     private void AddTargets(Guid batchId, IEnumerable<string> userIds)
@@ -262,10 +312,10 @@ public class FileService : IFileService
 
         if (batch is null || batch.ExpiresAt <= DateTime.UtcNow)
             return (null, ServiceStatus.NotFound);
-        
+
         if (batch.OwnerId != userId)
             return (null, ServiceStatus.Forbidden);
-        
+
         return (batch, ServiceStatus.Ok);
     }
 
@@ -276,7 +326,7 @@ public class FileService : IFileService
             name = "file";
         return name;
     }
-    
+
     private static FileResponse ToFileResponse(StoredFile f) =>
         new(f.Id, f.OriginalFileName, f.ContentType, f.SizeBytes);
 
